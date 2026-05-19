@@ -1,0 +1,14 @@
+# api keys
+.env
+
+# python
+__pycache__/
+venv/
+*.pyc
+
+# react/node
+node_modules/
+dist/
+
+# windows
+Thumbs.db
