@@ -40,7 +40,7 @@ class IdentityGuardResult:
 @dataclass(slots=True)
 class VisionGuardClient:
     api_key: str | None
-    model: str = "gemini-3-flash-preview"
+    model: str = "gemini-2.5-flash"
     timeout_seconds: float = 20.0
 
     @classmethod
@@ -73,7 +73,10 @@ class VisionGuardClient:
                 "you are an automotive forensic expert running match verification. judge whether "
                 "the part shown in the image matches the listing title. evaluate mechanical "
                 "identity, structural layout, and whether the image looks like a generic "
-                "stock illustration versus a unique item photo. use these confidence bands: "
+                "stock illustration versus a unique item photo. prioritize mechanical mismatches "
+                "over stock-photo cues: if the part is wrong or condition mismatched, output "
+                "misidentified_part or mismatched_condition even if the image appears catalog-like. "
+                "use these confidence bands: "
                 "0.90 to 1.00 for clear unique item photos that match part, condition, and parameters; "
                 "0.75 to 0.85 for clean catalog or stock graphics where the part looks correct; "
                 "0.50 to 0.70 for correct component type but visible wear or engineering mismatches; "
@@ -88,6 +91,8 @@ class VisionGuardClient:
                 "generic_stock_photo: the photo looks like a clean catalog image or render\n"
                 "misidentified_part: the photo shows a different part than the title\n"
                 "mismatched_condition: the title claims new but the photo shows wear\n"
+                "priority rule: if misidentified_part or mismatched_condition applies, "
+                "choose it even if the image otherwise looks like a stock photo\n"
                 "return a json object with keys match_confidence, classification, "
                 "forensic_notes. classification must be one of exact_match, "
                 "generic_stock_photo, misidentified_part, mismatched_condition. "

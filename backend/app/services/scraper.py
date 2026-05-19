@@ -23,13 +23,17 @@ class ScrapeResult:
     source_url: str
     title: str | None
     image_url: str | None
+    image_urls: list[str]
+    image_index: int | None
     seller_location: str | None
 
-    def to_dict(self) -> dict[str, str | None]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "source_url": self.source_url,
             "title": self.title,
             "image_url": self.image_url,
+            "image_urls": self.image_urls,
+            "image_index": self.image_index,
             "seller_location": self.seller_location,
         }
 
@@ -53,7 +57,7 @@ DEFAULT_HEADERS = {
 }
 
 
-def scrape_listing(url: str) -> ScrapeResult:
+def scrape_listing(url: str, image_index: int = 1) -> ScrapeResult:
     if not url.startswith("http"):
         raise ScraperError("invalid url")
 
@@ -96,7 +100,12 @@ def scrape_listing(url: str) -> ScrapeResult:
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    image_url = _extract_primary_image(soup)
+    image_urls = _extract_gallery_images(soup)
+    if not image_urls:
+        primary_image = _extract_primary_image(soup)
+        image_urls = [primary_image] if primary_image else []
+
+    image_url, selected_index = _select_image_url(image_urls, image_index)
     title = _extract_title(soup)
     seller_location = _extract_seller_location(soup)
 
@@ -104,8 +113,119 @@ def scrape_listing(url: str) -> ScrapeResult:
         source_url=url,
         title=title,
         image_url=image_url,
+        image_urls=image_urls,
+        image_index=selected_index,
         seller_location=seller_location,
     )
+
+
+def _extract_gallery_images(soup: BeautifulSoup) -> list[str]:
+    candidates: list[str] = []
+
+    candidates.extend(_extract_ld_images(soup))
+
+    meta_image = _first_meta_content(
+        soup,
+        [
+            ("property", "og:image"),
+            ("property", "og:image:secure_url"),
+            ("name", "twitter:image"),
+            ("name", "twitter:image:src"),
+        ],
+    )
+    if meta_image:
+        candidates.append(meta_image)
+
+    selectors = [
+        "img[data-zoom-src]",
+        "img[data-testid='ux-image-carousel-item']",
+        "img[data-testid='ux-image-carousel-image']",
+        "div[data-testid='ux-image-carousel'] img",
+        "div[data-testid='x-main-image'] img",
+        "div#vi_main_img_fs img",
+        "img[src*='i.ebayimg.com']",
+    ]
+
+    for img in soup.select(", ".join(selectors)):
+        url = _clean_text(
+            img.get("data-zoom-src")
+            or img.get("data-src")
+            or img.get("src")
+        )
+        if url:
+            candidates.append(url)
+
+    return _dedupe_images(candidates)
+
+
+def _select_image_url(
+    image_urls: list[str], image_index: int
+) -> tuple[str | None, int | None]:
+    if not image_urls:
+        return None, None
+
+    normalized_index = _normalize_image_index(image_index)
+    if normalized_index > len(image_urls):
+        normalized_index = len(image_urls)
+
+    return image_urls[normalized_index - 1], normalized_index
+
+
+def _normalize_image_index(value: int) -> int:
+    if isinstance(value, bool):
+        return 1
+    if not isinstance(value, int):
+        return 1
+    return value if value >= 1 else 1
+
+
+def _extract_ld_images(soup: BeautifulSoup) -> list[str]:
+    images: list[str] = []
+    for data in _iter_ld_json_objects(soup):
+        images.extend(_coerce_image_entries(data.get("image")))
+    return images
+
+
+def _coerce_image_entries(value: object) -> list[str]:
+    images: list[str] = []
+    if isinstance(value, str):
+        images.append(value)
+    elif isinstance(value, list):
+        for entry in value:
+            images.extend(_coerce_image_entries(entry))
+    elif isinstance(value, dict):
+        for key in ("url", "contentUrl", "thumbnailUrl"):
+            url = value.get(key)
+            if isinstance(url, str):
+                images.append(url)
+    return images
+
+
+def _dedupe_images(candidates: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    results: list[str] = []
+
+    for candidate in candidates:
+        cleaned = _clean_text(candidate)
+        if not cleaned or not _looks_like_listing_image(cleaned):
+            continue
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        results.append(cleaned)
+
+    return results
+
+
+def _looks_like_listing_image(url: str) -> bool:
+    lowered = url.lower()
+    if not lowered.startswith("http"):
+        return False
+    if any(token in lowered for token in ("sprite", "logo", "icon", "placeholder")):
+        return False
+    if "ebayimg.com" in lowered or "ebaystatic.com" in lowered:
+        return True
+    return lowered.endswith((".jpg", ".jpeg", ".png", ".webp"))
 
 
 def _extract_primary_image(soup: BeautifulSoup) -> str | None:

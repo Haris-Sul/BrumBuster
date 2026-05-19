@@ -6,6 +6,21 @@
   .animate-blink {
     animation: blink 1.4s infinite both;
   }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(31, 41, 55, 0.3); /* dark transparent track */
+    border-radius: 8px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(55, 65, 81, 0.8); /* gray-700 */
+    border-radius: 8px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(75, 85, 99, 1); /* gray-600 */
+  }
 }
 
 @keyframes blink {

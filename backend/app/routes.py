@@ -13,11 +13,12 @@ api_bp = Blueprint("api", __name__, url_prefix="/api")
 def analyze():
     payload = request.get_json(silent=True) or {}
     url = (payload.get("url") or "").strip()
+    image_index = _coerce_image_index(payload.get("image_index"))
     if not url:
         return jsonify({"error": "url is required"}), 400
 
     try:
-        scraped = scrape_listing(url)
+        scraped = scrape_listing(url, image_index=image_index)
     except ScraperError as exc:
         return jsonify({"error": str(exc)}), 502
     except Exception:
@@ -62,6 +63,18 @@ def analyze():
                 f"identity guard error: {type(exc).__name__}"
             )
 
+    if (
+        identity_guard_error is None
+        and isinstance(identity_guard, dict)
+        and identity_guard.get("classification") == "generic_stock_photo"
+    ):
+        scam_signals = {
+            **scam_signals,
+            "duplicates": [],
+            "geographic_conflicts": [],
+            "temporal_conflicts": [],
+        }
+
     return jsonify(
         {
             "data": scraped.to_dict(),
@@ -76,3 +89,21 @@ def analyze():
             "identity_guard_error": identity_guard_error,
         }
     )
+
+
+def _coerce_image_index(value: object) -> int:
+    if isinstance(value, bool):
+        return 1
+    if isinstance(value, int):
+        return value if value >= 1 else 1
+    if isinstance(value, float):
+        if not value.is_integer():
+            return 1
+        return int(value) if value >= 1 else 1
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped.isdigit():
+            return 1
+        index = int(stripped)
+        return index if index >= 1 else 1
+    return 1

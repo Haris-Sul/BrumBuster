@@ -4,6 +4,8 @@ import { Shield, Search, AlertTriangle, AlertCircle, CheckCircle, Activity, Glob
 interface APIResponse {
   data: {
     image_url: string;
+    image_urls: string[];
+    image_index: number | null;
     seller_location: string;
     source_url: string;
     title: string;
@@ -36,6 +38,7 @@ const LOADING_STEPS = [
 
 export default function App() {
   const [url, setUrl] = useState('');
+  const [imageIndex, setImageIndex] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState(0);
   const [result, setResult] = useState<APIResponse | null>(null);
@@ -64,7 +67,7 @@ export default function App() {
       const response = await fetch('http://127.0.0.1:5000/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, image_index: imageIndex }),
       });
 
       const data = await response.json();
@@ -154,6 +157,18 @@ export default function App() {
                 disabled={loading}
                 className="w-full bg-transparent border-none text-gray-100 px-4 py-5 focus:outline-none placeholder-gray-600 text-lg"
               />
+              <div className="border-l border-gray-700/60 pl-4 py-2 flex items-center shrink-0">
+                <label htmlFor="image-index" className="text-gray-400 text-sm font-medium mr-2 whitespace-nowrap">Image #</label>
+                <input
+                  id="image-index"
+                  type="number"
+                  min="1"
+                  value={imageIndex}
+                  onChange={(e) => setImageIndex(parseInt(e.target.value) || 1)}
+                  disabled={loading}
+                  className="w-16 bg-gray-800 border border-gray-700 text-gray-100 px-2 py-1.5 rounded-lg focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 text-center mr-4"
+                />
+              </div>
               <button
                 type="submit"
                 disabled={loading || !url.trim()}
@@ -296,12 +311,14 @@ export default function App() {
                       <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
                         Active eBay Clones ({result.scam_signals.duplicates.length})
                       </h4>
-                      <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                        {result.scam_signals.duplicates.map((item, i) => (
-                          <a key={i} href={item.url} target="_blank" rel="noreferrer" className="block bg-gray-800/50 hover:bg-gray-800 transition-colors border border-gray-700/50 p-3 rounded-xl group text-sm text-gray-300 truncate">
-                            {item.title}
-                          </a>
-                        ))}
+                      <div className="bg-black/20 border border-gray-800/60 rounded-xl p-3 shadow-inner">
+                        <div className="space-y-2 max-h-[156px] overflow-y-auto pr-2 custom-scrollbar">
+                          {result.scam_signals.duplicates.map((item, i) => (
+                            <a key={i} href={item.url} target="_blank" rel="noreferrer" className="block bg-gray-800/80 hover:bg-gray-700/80 transition-colors border border-gray-700/50 p-3 rounded-lg group text-sm text-gray-300 truncate">
+                              {item.title}
+                            </a>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -321,7 +338,7 @@ export default function App() {
                             <AlertTriangle className="w-4 h-4 mr-2 text-orange-400" /> 
                             Geographic Conflicts
                           </h4>
-                          {result.scam_signals.geographic_conflicts.slice(0, 5).map((item, i) => (
+                          {result.scam_signals.geographic_conflicts.slice(0, 3).map((item, i) => (
                             <div key={i} className="bg-orange-950/20 border border-orange-500/20 p-3 rounded-xl flex items-start space-x-3">
                               <Globe className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
                               <div className="min-w-0">
@@ -335,9 +352,9 @@ export default function App() {
                               </div>
                             </div>
                           ))}
-                          {result.scam_signals.geographic_conflicts.length > 5 && (
+                          {result.scam_signals.geographic_conflicts.length > 3 && (
                             <div className="text-xs text-gray-500 text-center pt-2">
-                              + {result.scam_signals.geographic_conflicts.length - 5} more conflicts
+                              + {result.scam_signals.geographic_conflicts.length - 3} more conflicts
                             </div>
                           )}
                         </div>
@@ -350,7 +367,7 @@ export default function App() {
                             <Clock className="w-4 h-4 mr-2 text-rose-400" /> 
                             Temporal Conflicts
                           </h4>
-                          {result.scam_signals.temporal_conflicts.slice(0, 5).map((item, i) => (
+                          {result.scam_signals.temporal_conflicts.slice(0, 3).map((item, i) => (
                             <div key={i} className="bg-rose-950/20 border border-rose-500/20 p-3 rounded-xl flex items-start space-x-3">
                               <Clock className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
                               <div className="min-w-0">
@@ -361,9 +378,9 @@ export default function App() {
                               </div>
                             </div>
                           ))}
-                          {result.scam_signals.temporal_conflicts.length > 5 && (
+                          {result.scam_signals.temporal_conflicts.length > 3 && (
                             <div className="text-xs text-gray-500 text-center pt-2">
-                              + {result.scam_signals.temporal_conflicts.length - 5} more conflicts
+                              + {result.scam_signals.temporal_conflicts.length - 3} more conflicts
                             </div>
                           )}
                         </div>
@@ -377,8 +394,17 @@ export default function App() {
                     <div className="flex-1 flex flex-col items-center justify-center space-y-3 py-8 text-center">
                       <CheckCircle className="w-8 h-8 text-green-500/50" />
                       <div>
-                        <p className="text-gray-400 font-medium">No Duplicates or Conflicts Detected</p>
-                        <p className="text-gray-500 text-sm">Image appears unique to this listing.</p>
+                        {result.identity_guard?.classification === 'generic_stock_photo' ? (
+                          <>
+                            <p className="text-gray-400 font-medium">Visual duplicates hidden</p>
+                            <p className="text-gray-500 text-sm">Harmless manufacturer stock asset verified.</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-gray-400 font-medium">No Duplicates or Conflicts Detected</p>
+                            <p className="text-gray-500 text-sm">Image appears unique to this listing.</p>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
